@@ -48,18 +48,23 @@ npm install -g nodecleaner
 ## Usage
 
 ### Scan Mode
+
 Preview what would be cleaned without making changes:
+
 ```bash
 nodecleaner scan
 ```
 
 ### Clean Mode
+
 Remove stale dependency directories:
+
 ```bash
 nodecleaner clean
 ```
 
 ### Options
+
 - `--min-size <MB>` - Only clean directories larger than specified size
 - `--dry-run` - Preview actions without deleting
 - `--help` - Show all available commands and options
@@ -75,6 +80,7 @@ nodecleaner clean
 ## Safety First
 
 NodeCleaner is designed with safety in mind:
+
 - ✅ Dry-run mode by default
 - ✅ Interactive confirmation prompts
 - ✅ Detailed reporting before actions
@@ -83,6 +89,7 @@ NodeCleaner is designed with safety in mind:
 ## Roadmap
 
 Future enhancements may include:
+
 - Support for other package managers (Python venv, Ruby gems, etc.)
 - Automatic scheduling options
 - Advanced filtering and exclusion rules
