@@ -507,6 +507,1010 @@ func (c *Cache) Set(path string, entry models.CacheEntry) error {
     c.modified = true
     return nil
 }
+```
+
+### 7.3 Symlink Handling
+
+```go
+// internal/scanner/symlinks.go
+
+func (s *Scanner) handleSymlink(path string) (string, error) {
+    if !s.config.FollowSymlinks {
+        return "", fmt.Errorf("symlinks disabled")
+    }
+
+    // Resolve symlink
+    resolved, err := filepath.EvalSymlinks(path)
+    if err != nil {
+        return "", err
+    }
+
+    // Check for circular references
+    if resolved == path {
+        return "", fmt.Errorf("circular symlink detected")
+    }
+
+    return resolved, nil
+}
+```
+
+---
+
+## 8. Caching Strategy
+
+### 8.1 Cache Structure
+
+**File Location**: `~/.nodecleaner/cache.json`
+
+**Format**:
+
+```json
+{
+  "version": "1.0",
+  "updated_at": "2026-01-13T10:30:00Z",
+  "entries": {
+    "/Users/dev/project1/node_modules": {
+      "path": "/Users/dev/project1/node_modules",
+      "size": 524288000,
+      "mod_time": "2025-12-01T14:20:00Z",
+      "last_scan": "2026-01-13T10:30:00Z"
+    }
+  }
+}
+```
+
+### 8.2 Cache Operations Flow
+
+```
+┌─────────────┐
+│ Scan Start  │
+└──────┬──────┘
+       │
+       ▼
+┌─────────────────┐      ┌──────────────┐
+│ Load Cache File │─────▶│ Parse JSON   │
+└─────────────────┘      └──────┬───────┘
+                                │
+                                ▼
+                         ┌─────────────────┐
+                         │ For Each Folder │
+                         └──────┬──────────┘
+                                │
+                    ┌───────────┼───────────┐
+                    ▼                       ▼
+            ┌───────────────┐      ┌──────────────┐
+            │ In Cache?     │─No──▶│ Full Scan    │
+            └───────┬───────┘      └──────┬───────┘
+                    │Yes                  │
+                    ▼                     ▼
+            ┌───────────────┐      ┌──────────────┐
+            │ ModTime Same? │      │ Update Cache │
+            └───────┬───────┘      └──────────────┘
+                    │
+        ┌───────────┼───────────┐
+        │No                     │Yes
+        ▼                       ▼
+┌───────────────┐      ┌──────────────┐
+│ Rescan Folder │      │ Use Cached   │
+└───────┬───────┘      └──────────────┘
+        │
+        ▼
+┌───────────────┐
+│ Update Cache  │
+└───────────────┘
+```
+
+### 8.3 Cache Invalidation Rules
+
+```go
+// internal/cache/rules.go
+
+type InvalidationRules struct {
+    MaxAge        time.Duration // 7 days default
+    ForceRescan   bool
+    PruneOrphans  bool
+}
+
+func (c *Cache) ApplyRules(rules InvalidationRules) error {
+    c.mu.Lock()
+    defer c.mu.Unlock()
+
+    now := time.Now()
+
+    for path, entry := range c.index.Entries {
+        shouldInvalidate := false
+
+        // Rule 1: Age-based invalidation
+        if now.Sub(entry.LastScan) > rules.MaxAge {
+            shouldInvalidate = true
+        }
+
+        // Rule 2: Path no longer exists
+        if rules.PruneOrphans {
+            if _, err := os.Stat(path); os.IsNotExist(err) {
+                delete(c.index.Entries, path)
+                c.modified = true
+                continue
+            }
+        }
+
+        // Rule 3: Force rescan
+        if rules.ForceRescan {
+            shouldInvalidate = true
+        }
+
+        if shouldInvalidate {
+            delete(c.index.Entries, path)
+            c.modified = true
+        }
+    }
+
+    return nil
+}
+```
+
+---
+
+## 9. CLI Interface Design
+
+### 9.1 Command Structure
+
+```
+nodecleaner
+├── scan [path]          # Scan for dependency folders
+├── clean [path]         # Interactive clean (scan + select + delete)
+├── list                 # List previous scan results
+├── cache
+│   ├── clear           # Clear cache
+│   ├── info            # Show cache statistics
+│   └── prune           # Remove orphaned entries
+├── config
+│   ├── show            # Display current config
+│   ├── set [key=value] # Set config value
+│   └── reset           # Reset to defaults
+└── version             # Show version info
+```
+
+### 9.2 Command Implementation
+
+```go
+// cmd/nodecleaner/main.go
+
+package main
+
+import (
+    "fmt"
+    "os"
+
+    "github.com/spf13/cobra"
+    "github.com/yourusername/nodecleaner/internal/config"
+    "github.com/yourusername/nodecleaner/internal/scanner"
+    "github.com/yourusername/nodecleaner/internal/cache"
+    "github.com/yourusername/nodecleaner/internal/cleaner"
+    "github.com/yourusername/nodecleaner/internal/ui"
+    "github.com/yourusername/nodecleaner/pkg/models"
+)
+
+var (
+    cfgFile     string
+    scanPath    string
+    noCache     bool
+    dryRun      bool
+    workers     int
+)
+
+func main() {
+    if err := rootCmd.Execute(); err != nil {
+        fmt.Fprintln(os.Stderr, err)
+        os.Exit(1)
+    }
+}
+
+var rootCmd = &cobra.Command{
+    Use:   "nodecleaner",
+    Short: "Clean stale dependency folders",
+    Long: `NodeCleaner helps developers reclaim disk space by identifying
+and safely removing stale dependency directories like node_modules.`,
+}
+
+var scanCmd = &cobra.Command{
+    Use:   "scan [path]",
+    Short: "Scan for dependency folders",
+    Args:  cobra.MaximumNArgs(1),
+    RunE:  runScan,
+}
+
+var cleanCmd = &cobra.Command{
+    Use:   "clean [path]",
+    Short: "Interactive clean (scan + select + delete)",
+    Args:  cobra.MaximumNArgs(1),
+    RunE:  runClean,
+}
+
+var cacheCmd = &cobra.Command{
+    Use:   "cache",
+    Short: "Manage cache",
+}
+
+var cacheClearCmd = &cobra.Command{
+    Use:   "clear",
+    Short: "Clear cache",
+    RunE:  runCacheClear,
+}
+
+var cacheInfoCmd = &cobra.Command{
+    Use:   "info",
+    Short: "Show cache statistics",
+    RunE:  runCacheInfo,
+}
+
+func init() {
+    cobra.OnInitialize(initConfig)
+
+    // Global flags
+    rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default: $HOME/.nodecleaner/config.yaml)")
+    rootCmd.PersistentFlags().IntVar(&workers, "workers", 4, "number of worker goroutines")
+
+    // Scan flags
+    scanCmd.Flags().BoolVar(&noCache, "no-cache", false, "disable cache")
+    scanCmd.Flags().StringVar(&scanPath, "path", "", "path to scan (default: $HOME)")
+
+    // Clean flags
+    cleanCmd.Flags().BoolVar(&dryRun, "dry-run", false, "preview without deleting")
+    cleanCmd.Flags().BoolVar(&noCache, "no-cache", false, "disable cache")
+    cleanCmd.Flags().StringVar(&scanPath, "path", "", "path to scan (default: $HOME)")
+
+    // Add commands
+    rootCmd.AddCommand(scanCmd)
+    rootCmd.AddCommand(cleanCmd)
+    rootCmd.AddCommand(cacheCmd)
+
+    cacheCmd.AddCommand(cacheClearCmd)
+    cacheCmd.AddCommand(cacheInfoCmd)
+}
+
+func initConfig() {
+    // Initialize configuration
+    config.Init(cfgFile)
+}
+
+func runScan(cmd *cobra.Command, args []string) error {
+    ctx := cmd.Context()
+
+    // Determine scan path
+    path := scanPath
+    if len(args) > 0 {
+        path = args[0]
+    }
+    if path == "" {
+        path = os.Getenv("HOME")
+    }
+
+    // Load config
+    cfg := config.Load()
+    cfg.ScanPath = path
+    cfg.Workers = workers
+
+    // Initialize cache
+    var c *cache.Cache
+    var err error
+    if !noCache {
+        c, err = cache.NewCache(cfg.CachePath)
+        if err != nil {
+            return fmt.Errorf("initializing cache: %w", err)
+        }
+        defer c.Save()
+    }
+
+    // Create scanner
+    s := scanner.NewScanner(cfg, c)
+
+    // Run scan
+    fmt.Printf("Scanning %s...\n", path)
+    result, err := s.Scan(ctx, path)
+    if err != nil {
+        return fmt.Errorf("scanning: %w", err)
+    }
+
+    // Display results
+    ui.DisplayScanResults(result)
+
+    return nil
+}
+
+func runClean(cmd *cobra.Command, args []string) error {
+    ctx := cmd.Context()
+
+    // First, perform scan
+    path := scanPath
+    if len(args) > 0 {
+        path = args[0]
+    }
+    if path == "" {
+        path = os.Getenv("HOME")
+    }
+
+    cfg := config.Load()
+    cfg.ScanPath = path
+    cfg.Workers = workers
+
+    var c *cache.Cache
+    var err error
+    if !noCache {
+        c, err = cache.NewCache(cfg.CachePath)
+        if err != nil {
+            return fmt.Errorf("initializing cache: %w", err)
+        }
+        defer c.Save()
+    }
+
+    s := scanner.NewScanner(cfg, c)
+
+    fmt.Printf("Scanning %s...\n", path)
+    result, err := s.Scan(ctx, path)
+    if err != nil {
+        return fmt.Errorf("scanning: %w", err)
+    }
+
+    if len(result.Folders) == 0 {
+        fmt.Println("No dependency folders found.")
+        return nil
+    }
+
+    // Interactive selection
+    model := ui.NewSelectionModel(result.Folders)
+    p := tea.NewProgram(model)
+
+    finalModel, err := p.Run()
+    if err != nil {
+        return fmt.Errorf("selection UI: %w", err)
+    }
+
+    selected := finalModel.(ui.SelectionModel).GetSelected()
+
+    if len(selected) == 0 {
+        fmt.Println("No folders selected.")
+        return nil
+    }
+
+    // Confirm deletion
+    if !dryRun {
+        fmt.Printf("\nAre you sure you want to delete %d folders? (yes/no): ", len(selected))
+        var confirm string
+        fmt.Scanln(&confirm)
+
+        if confirm != "yes" {
+            fmt.Println("Deletion cancelled.")
+            return nil
+        }
+    }
+
+    // Perform deletion
+    logger := initLogger()
+    cl := cleaner.NewCleaner(dryRun, logger)
+
+    cleanResult, err := cl.Clean(ctx, selected)
+    if err != nil {
+        return fmt.Errorf("cleaning: %w", err)
+    }
+
+    // Display results
+    ui.DisplayCleanResults(cleanResult)
+
+    return nil
+}
+
+func runCacheClear(cmd *cobra.Command, args []string) error {
+    cfg := config.Load()
+    c, err := cache.NewCache(cfg.CachePath)
+    if err != nil {
+        return err
+    }
+
+    if err := c.Clear(); err != nil {
+        return err
+    }
+
+    fmt.Println("Cache cleared successfully.")
+    return nil
+}
+
+func runCacheInfo(cmd *cobra.Command, args []string) error {
+    cfg := config.Load()
+    c, err := cache.NewCache(cfg.CachePath)
+    if err != nil {
+        return err
+    }
+
+    info := c.GetInfo()
+    fmt.Printf("Cache entries: %d\n", info.EntryCount)
+    fmt.Printf("Total cached size: %s\n", humanize.Bytes(uint64(info.TotalSize)))
+    fmt.Printf("Last updated: %s\n", info.UpdatedAt.Format(time.RFC3339))
+
+    return nil
+}
+```
+
+### 9.3 Output Formatting
+
+```go
+// internal/ui/formatter.go
+
+package ui
+
+import (
+    "fmt"
+    "os"
+    "text/tabwriter"
+
+    "github.com/dustin/go-humanize"
+    "github.com/charmbracelet/lipgloss"
+
+    "github.com/yourusername/nodecleaner/pkg/models"
+)
+
+var (
+    headerStyle = lipgloss.NewStyle().
+        Bold(true).
+        Foreground(lipgloss.Color("12"))
+
+    successStyle = lipgloss.NewStyle().
+        Foreground(lipgloss.Color("10"))
+
+    errorStyle = lipgloss.NewStyle().
+        Foreground(lipgloss.Color("9"))
+
+    warningStyle = lipgloss.NewStyle().
+        Foreground(lipgloss.Color("11"))
+)
+
+func DisplayScanResults(result *models.ScanResult) {
+    fmt.Println(headerStyle.Render("\n📊 Scan Results"))
+    fmt.Println(strings.Repeat("─", 80))
+
+    w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+    fmt.Fprintln(w, "SIZE\tLAST ACCESSED\tPATH")
+    fmt.Fprintln(w, strings.Repeat("─", 80))
+
+    for _, folder := range result.Folders {
+        fmt.Fprintf(w, "%s\t%s\t%s\n",
+            humanize.Bytes(uint64(folder.Size)),
+            humanize.Time(folder.AccessTime),
+            folder.Path,
+        )
+    }
+
+    w.Flush()
+
+    fmt.Println(strings.Repeat("─", 80))
+    fmt.Printf("\n%s\n", headerStyle.Render("Summary:"))
+    fmt.Printf("  Total folders: %d\n", result.TotalCount)
+    fmt.Printf("  Total size: %s\n", humanize.Bytes(uint64(result.TotalSize)))
+    fmt.Printf("  Scan duration: %s\n", result.Duration)
+
+    if result.CacheHits > 0 {
+        fmt.Printf("  Cache hits: %d (%.1f%%)\n",
+            result.CacheHits,
+            float64(result.CacheHits)/float64(result.CacheHits+result.CacheMisses)*100)
+    }
+}
+
+func DisplayCleanResults(result *models.CleanResult) {
+    fmt.Println()
+
+    if result.DryRun {
+        fmt.Println(warningStyle.Render("🔍 DRY RUN MODE - No files were deleted"))
+        fmt.Println()
+    }
+
+    fmt.Println(headerStyle.Render("🧹 Clean Results"))
+    fmt.Println(strings.Repeat("─", 80))
+
+    if len(result.Deleted) > 0 {
+        fmt.Println(successStyle.Render(fmt.Sprintf("\n✓ Successfully deleted %d folders:", len(result.Deleted))))
+        for _, path := range result.Deleted {
+            fmt.Printf("  • %s\n", path)
+        }
+    }
+
+    if len(result.Failed) > 0 {
+        fmt.Println(errorStyle.Render(fmt.Sprintf("\n✗ Failed to delete %d folders:", len(result.Failed))))
+        for _, fail := range result.Failed {
+            fmt.Printf("  • %s: %s\n", fail.Path, fail.Reason)
+        }
+    }
+
+    fmt.Println(strings.Repeat("─", 80))
+    fmt.Printf("\n%s\n", headerStyle.Render("Summary:"))
+    fmt.Printf("  Space reclaimed: %s\n", successStyle.Render(humanize.Bytes(uint64(result.SpaceReclaimed))))
+    fmt.Printf("  Duration: %s\n", result.Duration)
+
+    if !result.DryRun {
+        fmt.Printf("\n%s\n", successStyle.Render("✓ Cleanup complete!"))
+    }
+}
+```
+
+---
+
+## 10. Error Handling
+
+### 10.1 Error Types
+
+```go
+// pkg/models/errors.go
+
+package models
+
+import "fmt"
+
+// Error types
+type ErrorType string
+
+const (
+    ErrTypePermission   ErrorType = "PERMISSION_DENIED"
+    ErrTypeNotFound     ErrorType = "NOT_FOUND"
+    ErrTypeInvalidPath  ErrorType = "INVALID_PATH"
+    ErrTypeCacheCorrupt ErrorType = "CACHE_CORRUPT"
+    ErrTypeIO           ErrorType = "IO_ERROR"
+)
+
+// ApplicationError represents a structured error
+type ApplicationError struct {
+    Type    ErrorType
+    Message string
+    Path    string
+    Err     error
+}
+
+func (e *ApplicationError) Error() string {
+    if e.Path != "" {
+        return fmt.Sprintf("%s: %s (path: %s)", e.Type, e.Message, e.Path)
+    }
+    return fmt.Sprintf("%s: %s", e.Type, e.Message)
+}
+
+func (e *ApplicationError) Unwrap() error {
+    return e.Err
+}
+
+// Error constructors
+func NewPermissionError(path string, err error) *ApplicationError {
+    return &ApplicationError{
+        Type:    ErrTypePermission,
+        Message: "permission denied",
+        Path:    path,
+        Err:     err,
+    }
+}
+
+func NewNotFoundError(path string) *ApplicationError {
+    return &ApplicationError{
+        Type:    ErrTypeNotFound,
+        Message: "path not found",
+        Path:    path,
+    }
+}
+```
+
+### 10.2 Error Handling Strategy
+
+```go
+// internal/scanner/errors.go
+
+func (s *Scanner) handleError(err error, path string) {
+    var appErr *models.ApplicationError
+
+    if errors.As(err, &appErr) {
+        // Structured error - log appropriately
+        switch appErr.Type {
+        case models.ErrTypePermission:
+            s.logger.Warn("Skipping inaccessible path", "path", path)
+        case models.ErrTypeNotFound:
+            s.logger.Debug("Path not found", "path", path)
+        default:
+            s.logger.Error("Scan error", "error", appErr, "path", path)
+        }
+    } else {
+        // Unexpected error - log with full context
+        s.logger.Error("Unexpected error", "error", err, "path", path)
+    }
+
+    // Send to error channel for aggregation
+    select {
+    case s.errors <- err:
+    default:
+        // Channel full, drop error (already logged)
+    }
+}
+```
+
+### 10.3 Recovery Mechanisms
+
+```go
+// internal/cleaner/recovery.go
+
+// RecoveryLog stores deletion history for potential recovery
+type RecoveryLog struct {
+    path string
+    mu   sync.Mutex
+}
+
+func NewRecoveryLog(path string) *RecoveryLog {
+    return &RecoveryLog{path: path}
+}
+
+func (r *RecoveryLog) Record(op DeletionOp) error {
+    r.mu.Lock()
+    defer r.mu.Unlock()
+
+    f, err := os.OpenFile(r.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+    if err != nil {
+        return err
+    }
+    defer f.Close()
+
+    entry := fmt.Sprintf("%s|%s|%d|%s\n",
+        time.Now().Format(time.RFC3339),
+        op.Path,
+        op.Size,
+        op.Status,
+    )
+
+    _, err = f.WriteString(entry)
+    return err
+}
+```
+
+---
+
+## 11. Testing Strategy
+
+### 11.1 Unit Tests
+
+```go
+// internal/scanner/scanner_test.go
+
+package scanner
+
+import (
+    "context"
+    "os"
+    "path/filepath"
+    "testing"
+
+    "github.com/stretchr/testify/assert"
+    "github.com/stretchr/testify/require"
+
+    "github.com/yourusername/nodecleaner/pkg/models"
+)
+
+func TestScanner_Scan(t *testing.T) {
+    // Setup test directory structure
+    tmpDir := t.TempDir()
+
+    // Create test folders
+    testPaths := []string{
+        filepath.Join(tmpDir, "project1", "node_modules"),
+        filepath.Join(tmpDir, "project2", "node_modules"),
+        filepath.Join(tmpDir, "project3", "src", "node_modules"),
+    }
+
+    for _, p := range testPaths {
+        require.NoError(t, os.MkdirAll(p, 0755))
+
+        // Add some files to create size
+        testFile := filepath.Join(p, "test.txt")
+        require.NoError(t, os.WriteFile(testFile, []byte("test content"), 0644))
+    }
+
+    // Create scanner
+    cfg := &models.Config{
+        ScanPath: tmpDir,
+        Workers:  2,
+    }
+    s := NewScanner(cfg, nil)
+
+    // Run scan
+    ctx := context.Background()
+    result, err := s.Scan(ctx, tmpDir)
+
+    // Assertions
+    require.NoError(t, err)
+    assert.Equal(t, 3, result.TotalCount)
+    assert.Greater(t, result.TotalSize, int64(0))
+
+    // Verify all paths found
+    foundPaths := make(map[string]bool)
+    for _, folder := range result.Folders {
+        foundPaths[folder.Path] = true
+    }
+
+    for _, expected := range testPaths {
+        assert.True(t, foundPaths[expected], "Expected path not found: %s", expected)
+    }
+}
+
+func TestScanner_IgnoresPaths(t *testing.T) {
+    tmpDir := t.TempDir()
+
+    // Create both valid and ignored paths
+    validPath := filepath.Join(tmpDir, "project", "node_modules")
+    ignoredPath := filepath.Join(tmpDir, ".hidden", "node_modules")
+
+    require.NoError(t, os.MkdirAll(validPath, 0755))
+    require.NoError(t, os.MkdirAll(ignoredPath, 0755))
+
+    cfg := &models.Config{
+        ScanPath: tmpDir,
+        Workers:  1,
+    }
+    s := NewScanner(cfg, nil)
+
+    ctx := context.Background()
+    result, err := s.Scan(ctx, tmpDir)
+
+    require.NoError(t, err)
+    assert.Equal(t, 1, result.TotalCount)
+    assert.Equal(t, validPath, result.Folders[0].Path)
+}
+```
+
+### 11.2 Integration Tests
+
+```go
+// test/integration/scan_clean_test.go
+
+package integration
+
+import (
+    "context"
+    "os"
+    "path/filepath"
+    "testing"
+
+    "github.com/stretchr/testify/assert"
+    "github.com/stretchr/testify/require"
+
+    "github.com/yourusername/nodecleaner/internal/scanner"
+    "github.com/yourusername/nodecleaner/internal/cleaner"
+    "github.com/yourusername/nodecleaner/internal/cache"
+    "github.com/yourusername/nodecleaner/pkg/models"
+)
+
+func TestFullScanAndCleanWorkflow(t *testing.T) {
+    if testing.Short() {
+        t.Skip("Skipping integration test in short mode")
+    }
+
+    tmpDir := t.TempDir()
+    cacheDir := t.TempDir()
+
+    // Setup test structure
+    testFolder := filepath.Join(tmpDir, "test-project", "node_modules")
+    require.NoError(t, os.MkdirAll(testFolder, 0755))
+
+    // Add content
+    for i := 0; i < 10; i++ {
+        file := filepath.Join(testFolder, fmt.Sprintf("file%d.txt", i))
+        content := make([]byte, 1024*100) // 100KB each
+        require.NoError(t, os.WriteFile(file, content, 0644))
+    }
+
+    // Initialize components
+    cfg := &models.Config{
+        ScanPath:  tmpDir,
+        CachePath: filepath.Join(cacheDir, "cache.json"),
+        Workers:   2,
+    }
+
+    c, err := cache.NewCache(cfg.CachePath)
+    require.NoError(t, err)
+
+    s := scanner.NewScanner(cfg, c)
+
+    // Scan
+    ctx := context.Background()
+    scanResult, err := s.Scan(ctx, tmpDir)
+    require.NoError(t, err)
+    assert.Equal(t, 1, scanResult.TotalCount)
+
+    // Save cache
+    require.NoError(t, c.Save())
+
+    // Clean
+    logger := &testLogger{}
+    cl := cleaner.NewCleaner(false, logger)
+
+    cleanResult, err := cl.Clean(ctx, scanResult.Folders)
+    require.NoError(t, err)
+
+    assert.Equal(t, 1, len(cleanResult.Deleted))
+    assert.Equal(t, 0, len(cleanResult.Failed))
+    assert.Greater(t, cleanResult.SpaceReclaimed, int64(0))
+
+    // Verify deletion
+    _, err = os.Stat(testFolder)
+    assert.True(t, os.IsNotExist(err), "Folder should be deleted")
+}
+
+type testLogger struct{}
+
+func (l *testLogger) Info(msg string, fields ...interface{})  {}
+func (l *testLogger) Error(msg string, fields ...interface{}) {}
+func (l *testLogger) Warn(msg string, fields ...interface{})  {}
+```
+
+### 11.3 Benchmark Tests
+
+```go
+// internal/scanner/scanner_bench_test.go
+
+package scanner
+
+import (
+    "context"
+    "os"
+    "path/filepath"
+    "testing"
+
+    "github.com/yourusername/nodecleaner/pkg/models"
+)
+
+func BenchmarkScanner_Scan(b *testing.B) {
+    tmpDir := b.TempDir()
+
+    // Create 100 node_modules folders
+    for i := 0; i < 100; i++ {
+        path := filepath.Join(tmpDir, fmt.Sprintf("project%d", i), "node_modules")
+        os.MkdirAll(path, 0755)
+
+        // Add some files
+        for j := 0; j < 10; j++ {
+            file := filepath.Join(path, fmt.Sprintf("file%d.txt", j))
+            os.WriteFile(file, []byte("test"), 0644)
+        }
+    }
+
+    cfg := &models.Config{
+        ScanPath: tmpDir,
+        Workers:  4,
+    }
+
+    b.ResetTimer()
+
+    for i := 0; i < b.N; i++ {
+        s := NewScanner(cfg, nil)
+        ctx := context.Background()
+        _, err := s.Scan(ctx, tmpDir)
+        if err != nil {
+            b.Fatal(err)
+        }
+    }
+}
+```
+
+---
+
+## 12. Performance Optimization
+
+### 12.1 Concurrency Strategy
+
+**Worker Pool Pattern**:
+
+```go
+// internal/scanner/pool.go
+
+type WorkerPool struct {
+    workers int
+    jobs    chan string
+    results chan models.DependencyFolder
+    wg      sync.WaitGroup
+}
+
+func NewWorkerPool(workers int) *WorkerPool {
+    return &WorkerPool{
+        workers: workers,
+        jobs:    make(chan string, workers*2),
+        results: make(chan models.DependencyFolder, 100),
+    }
+}
+
+func (p *WorkerPool) Start(ctx context.Context, analyzer *analyzer.Analyzer) {
+    for i := 0; i < p.workers; i++ {
+        p.wg.Add(1)
+        go p.worker(ctx, analyzer)
+    }
+}
+
+func (p *WorkerPool) worker(ctx context.Context, a *analyzer.Analyzer) {
+    defer p.wg.Done()
+
+    for {
+        select {
+        case <-ctx.Done():
+            return
+        case path, ok := <-p.jobs:
+            if !ok {
+                return
+            }
+
+            folder, err := a.Analyze(path)
+            if err != nil {
+                continue
+            }
+
+            select {
+            case p.results <- *folder:
+            case <-ctx.Done():
+                return
+            }
+        }
+    }
+}
+
+func (p *WorkerPool) Submit(path string) {
+    p.jobs <- path
+}
+
+func (p *WorkerPool) Close() {
+    close(p.jobs)
+    p.wg.Wait()
+    close(p.results)
+}
+```
+
+### 12.2 Memory Management
+
+```go
+// internal/scanner/memory.go
+
+// Streaming results to avoid loading everything in memory
+type StreamingScanner struct {
+    resultWriter ResultWriter
+}
+
+type ResultWriter interface {
+    Write(folder models.DependencyFolder) error
+    Flush() error
+}
+
+// File-based result writer for large scans
+type FileResultWriter struct {
+    file *os.File
+    enc  *json.Encoder
+}
+
+func NewFileResultWriter(path string) (*FileResultWriter, error) {
+    f, err := os.Create(path)
+    if err != nil {
+        return nil, err
+    }
+
+    return &FileResultWriter{
+        file: f,
+        enc:  json.NewEncoder(f),
+    }, nil
+}
+
+func (w *FileResultWriter) Write(folder models.DependencyFolder) error {
+    return w.enc.Encode(folder)
+}
+
+func (w *FileResultWriter) Flush() error {
+    return w.file.Sync()
+}
+
+func (w *FileResultWriter) Close() error {
+    return w.file.Close()
+}
+```
+
+### 12.3 Optimization Techniques
+
+**1. Directory Skip Optimization**:
+
+```go
 
 // IsValid checks if cached entry is still valid
 func (c *Cache) IsValid(path string, currentModTime time.Time) bool {
