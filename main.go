@@ -3,7 +3,9 @@ Copyright © 2026 NAME HERE <EMAIL ADDRESS>
 */
 package main
 
-import "node-cleaner/cmd"
+import (
+	"github.com/d4rthvadr/node-cleaner/cmd"
+)
 
 func main() {
 	cmd.Execute()
