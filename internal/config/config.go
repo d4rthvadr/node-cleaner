@@ -153,6 +153,33 @@ func RestoreDefaults() error {
 }
 
 // Helper functions to get specific config values
+
+// persistConfigChanges writes the current in-memory config to the config file
+func persistConfigChanges() error {
+	if globalConfig != nil {
+		if err := viper.Unmarshal(globalConfig); err != nil {
+			return fmt.Errorf("unmarshaling config after set: %w", err)
+		}
+	}
+	return nil
+}
+
+// Update a configuration value and save changes to file
+func Set(key string, value interface{}) error {
+	// this saves the value in viper's in-memory config
+	viper.Set(key, value)
+
+	// but we need to persist the change to the config file shared
+	// across application runs
+
+	err := persistConfigChanges()
+	if err != nil {
+		return fmt.Errorf("persisting config changes: %w", err)
+	}
+
+	return viper.WriteConfigAs(configPath)
+}
+
 func GetStringValue(key string) string {
 	return viper.GetString(key)
 }
