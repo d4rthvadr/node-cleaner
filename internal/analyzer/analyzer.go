@@ -28,7 +28,7 @@ func (a *Analyzer) Analyze(path string) (*models.DependencyFolder, error) {
 		Path:         path,
 		AbsolutePath: path,
 		ModTime:      info.ModTime(),
-		Type:         a.detectType(info.Name()),
+		Type:         a.DetectType(info.Name()),
 	}
 
 	// Calculate size recursively
@@ -45,7 +45,7 @@ func (a *Analyzer) Analyze(path string) (*models.DependencyFolder, error) {
 	return folder, nil
 }
 
-func (a *Analyzer) detectType(folderName string) string {
+func (a *Analyzer) DetectType(folderName string) string {
 	switch folderName {
 	case "node_modules", "node_modules_cache":
 		return "Node.js"

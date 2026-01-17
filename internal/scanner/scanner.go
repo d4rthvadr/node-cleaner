@@ -8,14 +8,16 @@ import (
 	"sync"
 	"time"
 
+	"github.com/d4rthvadr/node-cleaner/internal/analyzer"
 	"github.com/d4rthvadr/node-cleaner/pkg/models"
 )
 
 type Scanner struct {
-	config  *models.Config
-	cache   CacheProvider
-	results chan models.DependencyFolder
-	errors  chan error
+	config   *models.Config
+	cache    CacheProvider
+	results  chan models.DependencyFolder
+	errors   chan error
+	analyzer *analyzer.Analyzer
 }
 
 type CacheProvider interface {
@@ -26,10 +28,11 @@ type CacheProvider interface {
 
 func NewScanner(cfg *models.Config, cache CacheProvider) *Scanner {
 	return &Scanner{
-		config:  cfg,
-		cache:   cache,
-		results: make(chan models.DependencyFolder),
-		errors:  make(chan error),
+		analyzer: analyzer.NewAnalyzer(),
+		config:   cfg,
+		cache:    cache,
+		results:  make(chan models.DependencyFolder),
+		errors:   make(chan error),
 	}
 }
 
@@ -152,7 +155,7 @@ func (s *Scanner) walkFileSystem(ctx context.Context, rootPath string, depth int
 					AbsolutePath: path,
 					Size:         cached.Size,
 					ModTime:      cached.ModTime,
-					Type:         d.Name(),
+					Type:         s.analyzer.DetectType(d.Name()),
 				}
 
 			} else {
@@ -172,6 +175,6 @@ func (s *Scanner) walkFileSystem(ctx context.Context, rootPath string, depth int
 
 func (s *Scanner) enqueueAndAnalysis(path string) {
 
-	// send directory for analysis
+	// send path to worker pool
 
 }
