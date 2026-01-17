@@ -17,7 +17,6 @@ var configShowCmd = &cobra.Command{
 	Use:   "show",
 	Short: "Show current configuration",
 	Run: func(cmd *cobra.Command, args []string) {
-
 		config.Display()
 	},
 }

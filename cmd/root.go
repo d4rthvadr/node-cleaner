@@ -4,9 +4,16 @@ Copyright © 2026 NAME HERE <EMAIL ADDRESS>
 package cmd
 
 import (
+	"fmt"
 	"os"
 
+	"github.com/d4rthvadr/node-cleaner/internal/config"
 	"github.com/spf13/cobra"
+)
+
+var (
+	cfgFile string
+	workers int
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -33,17 +40,22 @@ func Execute() {
 	}
 }
 
+func initConfig() {
+	// Initialize configuration
+	config.Init(cfgFile)
+}
+
 func init() {
+	fmt.Print("in root.go init()\n")
+
+	cobra.OnInitialize(initConfig)
+
 	// Here you will define your flags and configuration settings.
 	// Cobra supports persistent flags, which, if defined here,
 	// will be global for your application.
 
-	// rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.node-cleaner.yaml)")
-
-	// Cobra also supports local flags, which will only run
-	// when this action is called directly.
-	// rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	// Global flags
+	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.node-cleaner/config.yaml)")
+	rootCmd.PersistentFlags().IntVar(&workers, "workers", 4, "Number of concurrent workers")
 
 }
-
-
