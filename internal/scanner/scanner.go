@@ -59,13 +59,16 @@ func (s *Scanner) Scan(ctx context.Context, rootPath string) (*models.ScanResult
 	// and send directories to be processed by workers
 
 	go func() {
-		defer close(s.results)
-		s.walkFileSystem(ctx, rootPath, 0)
+		if err := s.walkFileSystem(ctx, rootPath, 0); err != nil {
+			s.errors <- fmt.Errorf("walking filesystem: %w", err)
+		}
+		close(s.workQueue)
 	}()
 
 	go func() {
 		wg.Wait()
 		close(s.errors)
+		close(s.results)
 	}()
 
 	// aggregate results
@@ -73,6 +76,11 @@ func (s *Scanner) Scan(ctx context.Context, rootPath string) (*models.ScanResult
 		finalResult.Folders = append(finalResult.Folders, r)
 		finalResult.TotalSize += r.Size
 		finalResult.TotalCount++
+	}
+
+	for err := range s.errors {
+		// Log errors (could be aggregated or handled differently)
+		fmt.Printf("Scan error: %v\n", err)
 	}
 
 	finalResult.Duration = time.Since(finalResult.ScanTime)
@@ -153,7 +161,9 @@ func (s *Scanner) enqueueAndAnalysis(path string) {
 	// send path to worker pool
 	select {
 	case s.workQueue <- path:
-	case <-time.After(100 * time.Millisecond):
+	default:
+		// if workQueue is full(aka workers are busy), process immediately here
+		// so that path wont be lost
 
 		folder, err := s.analyzer.Analyze(path)
 		if err != nil {
