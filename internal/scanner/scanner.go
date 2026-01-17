@@ -10,6 +10,7 @@ import (
 
 	"github.com/d4rthvadr/node-cleaner/internal/analyzer"
 	"github.com/d4rthvadr/node-cleaner/pkg/models"
+	"github.com/d4rthvadr/node-cleaner/pkg/utils"
 )
 
 type Scanner struct {
@@ -36,16 +37,6 @@ func NewScanner(cfg *models.Config, cache CacheProvider) *Scanner {
 		results:  make(chan models.DependencyFolder),
 		errors:   make(chan error),
 	}
-}
-
-var targetDirectories = []string{
-	"node_modules",       // common Node.js dependencies folder
-	"node_modules_cache", // alternative Node.js cache folder
-	"vendor",             // Go/Php vendor folders
-	".venv",              // Python virtual environment
-	"__pycache__",        // Python cache folder
-	"venv",               // Python virtual environment
-	"target",             // Rust target folder
 }
 
 // Scan initiates file traversal process
@@ -89,18 +80,6 @@ func (s *Scanner) Scan(ctx context.Context, rootPath string) (*models.ScanResult
 
 }
 
-func (s *Scanner) isTargetDirectory(name string) bool {
-
-	for _, target := range targetDirectories {
-		if name == target {
-			return true
-		}
-	}
-
-	return false
-
-}
-
 func (s *Scanner) walkFileSystem(ctx context.Context, rootPath string, depth int) error {
 
 	pathDepths := make(map[string]int)
@@ -138,7 +117,7 @@ func (s *Scanner) walkFileSystem(ctx context.Context, rootPath string, depth int
 
 		// TODO: check ignore paths
 
-		if s.isTargetDirectory(d.Name()) {
+		if utils.IsTargetDirectory(d.Name()) {
 
 			info, _ := d.Info()
 
@@ -151,7 +130,7 @@ func (s *Scanner) walkFileSystem(ctx context.Context, rootPath string, depth int
 					AbsolutePath: path,
 					Size:         cached.Size,
 					ModTime:      cached.ModTime,
-					Type:         s.detectType(d.Name()),
+					Type:         utils.DetectType(d.Name()),
 				}
 
 			} else {
@@ -226,20 +205,4 @@ func (s *Scanner) worker(ctx context.Context, wg *sync.WaitGroup) {
 
 		}
 	}
-}
-
-func (s *Scanner) detectType(folderName string) string {
-	typeMap := map[string]string{
-		"node_modules": "Node.js",
-		"vendor":       "Go/PHP",
-		".venv":        "Python",
-		"venv":         "Python",
-		"target":       "Rust/Java",
-	}
-
-	if typValue, ok := typeMap[folderName]; ok {
-		return typValue
-	}
-	return "Unknown"
-
 }

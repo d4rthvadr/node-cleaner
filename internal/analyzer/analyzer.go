@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/d4rthvadr/node-cleaner/pkg/models"
+	"github.com/d4rthvadr/node-cleaner/pkg/utils"
 )
 
 type Analyzer struct{}
@@ -28,7 +29,7 @@ func (a *Analyzer) Analyze(path string) (*models.DependencyFolder, error) {
 		Path:         path,
 		AbsolutePath: path,
 		ModTime:      info.ModTime(),
-		Type:         a.detectType(info.Name()),
+		Type:         utils.DetectType(info.Name()),
 	}
 
 	// Calculate size recursively
@@ -43,21 +44,6 @@ func (a *Analyzer) Analyze(path string) (*models.DependencyFolder, error) {
 	folder.AccessTime = a.getAccessTime(info)
 
 	return folder, nil
-}
-
-func (a *Analyzer) detectType(folderName string) string {
-	switch folderName {
-	case "node_modules", "node_modules_cache":
-		return "Node.js"
-	case "vendor":
-		return "Go/PHP"
-	case ".venv", "venv", "__pycache__":
-		return "Python"
-	case "target":
-		return "Rust"
-	default:
-		return "Unknown"
-	}
 }
 
 // getAccessTime uses platform-specific syscall to get the last access time of the file/folder
