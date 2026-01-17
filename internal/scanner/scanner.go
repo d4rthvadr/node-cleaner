@@ -13,11 +13,12 @@ import (
 )
 
 type Scanner struct {
-	config   *models.Config
-	cache    CacheProvider
-	results  chan models.DependencyFolder
-	errors   chan error
-	analyzer *analyzer.Analyzer
+	config    *models.Config
+	cache     CacheProvider
+	results   chan models.DependencyFolder
+	errors    chan error
+	analyzer  *analyzer.Analyzer
+	workQueue chan string
 }
 
 type CacheProvider interface {
@@ -26,6 +27,7 @@ type CacheProvider interface {
 	IsValid(path string, modTime time.Time) bool
 }
 
+// NewScanner creates a new Scanner instance
 func NewScanner(cfg *models.Config, cache CacheProvider) *Scanner {
 	return &Scanner{
 		analyzer: analyzer.NewAnalyzer(),
@@ -84,12 +86,6 @@ func (s *Scanner) Scan(ctx context.Context, rootPath string) (*models.ScanResult
 
 	finalResult.Duration = time.Since(finalResult.ScanTime)
 	return finalResult, nil
-
-}
-
-// worker processes directories and sends results/errors
-func (s *Scanner) worker(ctx context.Context, wg *sync.WaitGroup) {
-	defer wg.Done()
 
 }
 
@@ -155,7 +151,7 @@ func (s *Scanner) walkFileSystem(ctx context.Context, rootPath string, depth int
 					AbsolutePath: path,
 					Size:         cached.Size,
 					ModTime:      cached.ModTime,
-					Type:         s.analyzer.DetectType(d.Name()),
+					Type:         s.detectType(d.Name()),
 				}
 
 			} else {
@@ -176,5 +172,74 @@ func (s *Scanner) walkFileSystem(ctx context.Context, rootPath string, depth int
 func (s *Scanner) enqueueAndAnalysis(path string) {
 
 	// send path to worker pool
+	select {
+	case s.workQueue <- path:
+	case <-time.After(100 * time.Millisecond):
+
+		folder, err := s.analyzer.Analyze(path)
+		if err != nil {
+			s.errors <- fmt.Errorf("analyzing %s: %w", path, err)
+			return
+		}
+		s.results <- *folder
+	}
+
+}
+
+// worker processes directories and sends results/errors
+
+func (s *Scanner) worker(ctx context.Context, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case path, ok := <-s.workQueue:
+			if !ok {
+				return // Channel closed
+			}
+
+			folder, err := s.analyzer.Analyze(path)
+			if err != nil {
+				s.errors <- fmt.Errorf("analyzing %s: %w", path, err)
+				continue
+			}
+
+			// Cache the result if caching is enabled
+			if s.cache != nil {
+				s.cache.Set(path, &models.CacheEntry{
+					Path:     path,
+					Size:     folder.Size,
+					ModTime:  folder.ModTime,
+					LastScan: time.Now(),
+				})
+			}
+
+			// context could cancelled while sending result
+			select {
+			case s.results <- *folder:
+			case <-ctx.Done():
+				return
+
+			}
+
+		}
+	}
+}
+
+func (s *Scanner) detectType(folderName string) string {
+	typeMap := map[string]string{
+		"node_modules": "Node.js",
+		"vendor":       "Go/PHP",
+		".venv":        "Python",
+		"venv":         "Python",
+		"target":       "Rust/Java",
+	}
+
+	if typValue, ok := typeMap[folderName]; ok {
+		return typValue
+	}
+	return "Unknown"
 
 }
