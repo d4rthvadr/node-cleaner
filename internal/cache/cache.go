@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/d4rthvadr/node-cleaner/pkg/models"
 )
@@ -67,4 +68,16 @@ func (c *Cache) Set(path string, entry *models.CacheEntry) error {
 	c.index.Entries[path] = *entry
 	c.modified = true
 	return nil
+}
+
+// IsValid checks if the cache entry for the given path is still valid
+func (c *Cache) IsValid(path string, currentModTime time.Time) bool {
+
+	entry, exists := c.Get(path)
+	if !exists {
+		return false
+	}
+
+	return entry.ModTime.Equal(currentModTime)
+
 }

@@ -21,6 +21,7 @@ type Scanner struct {
 type CacheProvider interface {
 	Get(path string) (*models.CacheEntry, bool)
 	Set(path string, entry *models.CacheEntry) error
+	IsValid(path string, modTime time.Time) bool
 }
 
 func NewScanner(cfg *models.Config, cache CacheProvider) *Scanner {
@@ -140,14 +141,29 @@ func (s *Scanner) walkFileSystem(ctx context.Context, rootPath string, depth int
 
 		if s.isTargetDirectory(d.Name()) {
 
-			// info, _ := d.Info()
+			info, _ := d.Info()
 
-			s.enqueueAndAnalysis(path)
+			if s.cache != nil && s.cache.IsValid(path, info.ModTime()) {
+
+				// use cached data
+				cached, _ := s.cache.Get(path)
+				s.results <- models.DependencyFolder{
+					Path:         path,
+					AbsolutePath: path,
+					Size:         cached.Size,
+					ModTime:      cached.ModTime,
+					Type:         d.Name(),
+				}
+
+			} else {
+				s.enqueueAndAnalysis(path)
+			}
 
 			return fs.SkipDir // skip further traversal into this directory
 
 		}
 
+		// Continue walking
 		return nil
 
 	})
