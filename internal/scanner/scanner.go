@@ -137,7 +137,8 @@ func (s *Scanner) walkFileSystem(ctx context.Context, rootPath string, depth int
 			if s.cache != nil && s.cache.IsValid(path, info.ModTime()) {
 
 				// use cached data
-				cached, _ := s.cache.Get(path)
+				cached, cacheHit := s.cache.Get(path)
+				fmt.Println("cache hit? ", cacheHit)
 				s.results <- models.DependencyFolder{
 					Path:         path,
 					AbsolutePath: path,

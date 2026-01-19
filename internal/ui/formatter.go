@@ -29,27 +29,43 @@ func DisplayScanResults(result *models.ScanResult) {
 	fmt.Println(strings.Repeat("-", 80))
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "SIZE\tLAST ACCESSED\tPATH")
+
+	// Colorful header
+	fmt.Fprintln(w, headerStyle.Render("SIZE")+"\t"+
+		headerStyle.Render("LAST ACCESSED")+"\t"+
+		headerStyle.Render("PATH"))
 	fmt.Fprintln(w, strings.Repeat("─", 80))
 
+	pathStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("14"))
+
 	for _, folder := range result.Folders {
+		// Color code by size
+		sizeStr := humanize.Bytes(uint64(folder.Size))
+		if folder.Size > 500*1024*1024 { // > 500MB
+			sizeStr = errorStyle.Render(sizeStr) // red for large
+		} else if folder.Size > 100*1024*1024 { // > 100MB
+			sizeStr = warningStyle.Render(sizeStr) // yellow for medium
+		} else {
+			sizeStr = successStyle.Render(sizeStr) // green for small
+		}
+
 		fmt.Fprintf(w, "%s\t%s\t%s\n",
-			humanize.Bytes(uint64(folder.Size)),
+			sizeStr,
 			humanize.Time(folder.AccessTime),
-			folder.Path,
+			pathStyle.Render(folder.Path),
 		)
 
 	}
 	w.Flush()
 
 	fmt.Println(strings.Repeat("─", 80))
-	fmt.Printf("\n%s\n", headerStyle.Render("Summary:"))
-	fmt.Printf(" Total folders: %d\n", result.TotalCount)
-	fmt.Printf(" Total size: %s\n", humanize.Bytes(uint64(result.TotalSize)))
+	fmt.Printf("\n%s\n", headerStyle.Render("✨ Summary:"))
+	fmt.Printf(" Total folders: %s\n", successStyle.Render(fmt.Sprintf("%d", result.TotalCount)))
+	fmt.Printf(" Total size: %s\n", errorStyle.Render(humanize.Bytes(uint64(result.TotalSize))))
 	fmt.Printf(" Scan duration: %s\n", result.Duration)
 	if result.CacheHits > 0 {
-		fmt.Printf("  Cache hits: %d (%.1f%%)\n",
-			result.CacheHits,
+		fmt.Printf(" Cache hits: %s (%.1f%%)\n",
+			successStyle.Render(fmt.Sprintf("%d", result.CacheHits)),
 			float64(result.CacheHits)/float64(result.CacheHits+result.CacheMisses)*100)
 	}
 }
