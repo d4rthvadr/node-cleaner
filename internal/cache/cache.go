@@ -125,11 +125,14 @@ func (c *Cache) Save() error {
 
 // Clear removes all entries from the cache
 func (c *Cache) Clear() error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	c.index.Entries = make(map[string]models.CacheEntry)
-	c.modified = true
+	c.clearCacheFile()
 
 	return c.Save()
+}
+
+func (c *Cache) clearCacheFile() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.index.Entries = make(map[string]models.CacheEntry)
+	c.modified = true
 }
