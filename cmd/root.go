@@ -42,17 +42,20 @@ func Execute() {
 
 func initConfig() {
 	// Initialize configuration
-	config.Init(cfgFile)
+	err := config.Init(cfgFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error initializing config: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("Configuration initialized")
+	cfg := config.Load()
+	cfg.Workers = workers
+
 }
 
 func init() {
-	fmt.Print("in root.go init()\n")
-
 	cobra.OnInitialize(initConfig)
-
-	// Here you will define your flags and configuration settings.
-	// Cobra supports persistent flags, which, if defined here,
-	// will be global for your application.
 
 	// Global flags
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.node-cleaner/config.yaml)")
