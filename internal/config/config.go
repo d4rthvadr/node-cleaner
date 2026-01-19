@@ -25,13 +25,18 @@ func Init(cfgFile string) error {
 			return fmt.Errorf("getting home directory: %w", err)
 		}
 
-		configDir := filepath.Join(home, ".nodecleaner")
+		configDir := filepath.Join(home, ".depocleaner")
+		legacyDir := filepath.Join(home, ".nodecleaner")
 
 		if err := os.MkdirAll(configDir, os.ModePerm); err != nil {
 			return fmt.Errorf("creating config directory: %w", err)
 		}
 
 		viper.AddConfigPath(configDir)
+		// Backward compatibility: also look in legacy path if present
+		if _, err := os.Stat(legacyDir); err == nil {
+			viper.AddConfigPath(legacyDir)
+		}
 		viper.AddConfigPath(".")
 		viper.SetConfigName("config")
 		viper.SetConfigType("yaml")
@@ -42,7 +47,7 @@ func Init(cfgFile string) error {
 	setDefaults()
 
 	// enable environment variables support
-	viper.SetEnvPrefix("NODECLEANER")
+	viper.SetEnvPrefix("DEPOCLEANER")
 	viper.AutomaticEnv()
 
 	// read in config file
@@ -72,11 +77,11 @@ func setDefaults() {
 	home, _ := os.UserHomeDir()
 
 	// TODO: extract to constants package
-	configDir := filepath.Join(home, ".nodecleaner")
+	configDir := filepath.Join(home, ".depocleaner")
 
 	viper.SetDefault("scan_path", home)
 	viper.SetDefault("cache_path", filepath.Join(configDir, "cache.json"))
-	viper.SetDefault("log_path", filepath.Join(configDir, "nodecleaner.log"))
+	viper.SetDefault("log_path", filepath.Join(configDir, "depocleaner.log"))
 	viper.SetDefault("follow_symlinks", false)
 	viper.SetDefault("max_depth", 10)
 	viper.SetDefault("workers", 4)
@@ -104,9 +109,9 @@ func Load() *models.Config {
 		}
 
 		home, _ := os.UserHomeDir()
-		configDir := filepath.Join(home, ".nodecleaner")
+		configDir := filepath.Join(home, ".depocleaner")
 		globalConfig.CachePath = filepath.Join(configDir, "cache.json")
-		globalConfig.LogPath = filepath.Join(configDir, "nodecleaner.log")
+		globalConfig.LogPath = filepath.Join(configDir, "depocleaner.log")
 	}
 	return globalConfig
 
@@ -126,7 +131,7 @@ func Display() {
 func SaveDefaultsToFile() error {
 
 	home, _ := os.UserHomeDir()
-	configDir := filepath.Join(home, ".nodecleaner")
+	configDir := filepath.Join(home, ".depocleaner")
 	configPath := filepath.Join(configDir, "config.yaml")
 
 	// should not error if dir exists

@@ -1,10 +1,10 @@
-# NodeCleaner 🧹
+# DepoCleaner 🧹
 
 Reclaim disk space by safely identifying and reviewing large dependency directories across common ecosystems.
 
 ## Supported Ecosystems
 
-NodeCleaner scans for dependency folders in these stacks:
+DepoCleaner scans for dependency folders in these stacks:
 
 - Node.js: `node_modules`
 - Go: `vendor`
@@ -28,11 +28,13 @@ This is a Go CLI.
 # Build locally
 go build
 
-# Run (defaults use config at $HOME/.nodecleaner/config.yaml)
-./node-cleaner --workers 4 scan [path]
+# Run (defaults use config at $HOME/.depocleaner/config.yaml)
+./depo-cleaner --workers 4 scan [path]
 ```
 
 Alternatively, add it to your PATH or package per your workflow.
+
+Note: The current executable name is `depo-cleaner` and env prefix is `DEPOCLEANER_`. Branding is DepoCleaner; binary and env prefix may be updated in code later.
 
 ## Usage
 
@@ -40,29 +42,29 @@ Alternatively, add it to your PATH or package per your workflow.
 
 ```bash
 # Scan your home (default from config)
-./node-cleaner scan
+./depo-cleaner scan
 
 # Scan a specific path
-./node-cleaner scan /path/to/projects
+./depo-cleaner scan /path/to/projects
 
 # Control concurrency
-./node-cleaner --workers 8 scan /path/to/projects
+./depo-cleaner --workers 8 scan /path/to/projects
 
 # Disable cache for a fresh run
-./node-cleaner --workers 4 scan --no-cache /path/to/projects
+./depo-cleaner --workers 4 scan --no-cache /path/to/projects
 ```
 
 ### Config
 
-NodeCleaner uses Viper. Configuration priority is: flags > env vars > config file > defaults.
+DepoCleaner uses Viper. Configuration priority is: flags > env vars > config file > defaults.
 
-- Config file: `$HOME/.nodecleaner/config.yaml`
-- Env vars prefix: `NODECLEANER_` (e.g., `NODECLEANER_WORKERS=8`)
+- Config file: `$HOME/.depocleaner/config.yaml`
+- Env vars prefix: `DEPOCLEANER_` (e.g., `DEPOCLEANER_WORKERS=8`)
 
 Display current config:
 
 ```bash
-./node-cleaner config show
+./depo-cleaner config show
 ```
 
 ### Cache
@@ -70,7 +72,7 @@ Display current config:
 Inspect or reset the cache:
 
 ```bash
-./node-cleaner cache clear
+./depo-cleaner cache clear
 ```
 
 ## How It Works

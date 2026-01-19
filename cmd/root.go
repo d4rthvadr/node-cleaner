@@ -18,8 +18,8 @@ var (
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use:   "node-cleaner",
-	Short: "A tool to clean up unnecessary node_modules folders",
+	Use:   "depo-cleaner",
+	Short: "Clean up large dependency folders (node_modules, vendor, venv, target)",
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
@@ -49,7 +49,7 @@ func init() {
 	cobra.OnInitialize(initConfig)
 
 	// Global flags
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.node-cleaner/config.yaml)")
+	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.depocleaner/config.yaml)")
 	rootCmd.PersistentFlags().IntVar(&workers, "workers", 4, "Number of concurrent workers")
 
 }
