@@ -48,13 +48,12 @@ func (a *Analyzer) Analyze(path string) (*models.DependencyFolder, error) {
 
 // getAccessTime uses platform-specific syscall to get the last access time of the file/folder
 func (a *Analyzer) getAccessTime(info os.FileInfo) (atime time.Time) {
-
 	statT, ok := info.Sys().(*syscall.Stat_t)
 	if !ok {
 		return info.ModTime()
 	}
-
-	return time.Unix(int64(statT.Atimespec.Sec), int64(statT.Atimespec.Nsec))
+	sec, nsec := atimeFromStat(statT)
+	return time.Unix(sec, nsec)
 }
 
 // calculateSize computes the total size of all files within the specified path
