@@ -3,6 +3,7 @@ package cache
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -61,6 +62,8 @@ func (c *Cache) Get(path string) (*models.CacheEntry, bool) {
 }
 
 // Set adds or updates a cache entry for the given path
+// Any modification marks the cache as dirty but stored in memory
+// until Save() is called
 func (c *Cache) Set(path string, entry *models.CacheEntry) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -80,4 +83,42 @@ func (c *Cache) IsValid(path string, currentModTime time.Time) bool {
 
 	return entry.ModTime.Equal(currentModTime)
 
+}
+
+// Save writes data from memory cache to the disk file
+// if there are modifications
+func (c *Cache) Save() error {
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if !c.modified {
+		return nil // no changes to save
+	}
+
+	c.index.UpdatedAt = time.Now()
+
+	dir := filepath.Dir(c.path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+
+	// write to a temp file first for atomicity
+	tempPath := c.path + ".tmp"
+	f, err := os.Create(tempPath)
+	if err != nil {
+		return err
+	}
+
+	encoder := json.NewEncoder(f)
+	err = encoder.Encode(c.index)
+
+	f.Close()
+
+	if err != nil {
+		return err
+	}
+
+	// replace old cache file with the new one
+	return os.Rename(tempPath, c.path)
 }
