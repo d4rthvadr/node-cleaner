@@ -7,6 +7,7 @@ import (
 	"github.com/d4rthvadr/node-cleaner/internal/cache"
 	"github.com/d4rthvadr/node-cleaner/internal/config"
 	"github.com/d4rthvadr/node-cleaner/internal/scanner"
+	"github.com/d4rthvadr/node-cleaner/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -78,8 +79,6 @@ func runScan(cmd *cobra.Command, args []string) {
 	}
 
 	// Display results
-	fmt.Printf("Scan completed in %v\n", result.Duration)
-	fmt.Printf("Total folders found: %d\n", result.TotalCount)
-	fmt.Printf("Total size: %.2f MB\n", float64(result.TotalSize)/(1024*1024))
+	ui.DisplayScanResults(result)
 
 }
