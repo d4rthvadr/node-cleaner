@@ -20,23 +20,30 @@ DepoCleaner scans for dependency folders in these stacks:
 - Clear, colorful terminal output
 - Safe by design: preview, confirm, then act
 
-## Installation
+## Build
 
-This is a Go CLI.
+Quick builds via Makefile (wraps scripts/build.sh):
 
 ```bash
-# Build locally
-go build
+# Build cross-platform binaries to dist/
+make build
 
-# Run (defaults use config at $HOME/.depocleaner/config.yaml)
-./depo-cleaner --workers 4 scan [path]
+# Optionally set a version string
+make build VERSION=v1.2.3
+
+# Clean build artifacts
+make clean
 ```
 
-Alternatively, add it to your PATH or package per your workflow.
-
-Note: The current executable name is `depo-cleaner` and env prefix is `DEPOCLEANER_`. Branding is DepoCleaner; binary and env prefix may be updated in code later.
+Artifacts are placed in `dist/` (e.g., `depo-cleaner_darwin_arm64`) with `.sha256` checksums. The build script is at [scripts/build.sh](scripts/build.sh).
 
 ## Usage
+
+Run the CLI (defaults use config at $HOME/.depocleaner/config.yaml):
+
+```bash
+./depo-cleaner --workers 4 scan [path]
+```
 
 ### Scan
 
