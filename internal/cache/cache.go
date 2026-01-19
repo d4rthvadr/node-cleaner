@@ -122,3 +122,14 @@ func (c *Cache) Save() error {
 	// replace old cache file with the new one
 	return os.Rename(tempPath, c.path)
 }
+
+// Clear removes all entries from the cache
+func (c *Cache) Clear() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.index.Entries = make(map[string]models.CacheEntry)
+	c.modified = true
+
+	return c.Save()
+}
