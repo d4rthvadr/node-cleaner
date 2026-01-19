@@ -35,8 +35,8 @@ func NewScanner(cfg *models.Config, cache CacheProvider) *Scanner {
 		analyzer: analyzer.NewAnalyzer(),
 		config:   cfg,
 		cache:    cache,
-		results:  make(chan models.DependencyFolder),
-		errors:   make(chan error),
+		results:  make(chan models.DependencyFolder, 100), // buffered to prevent blocking
+		errors:   make(chan error, 50),                    // buffered for errors
 	}
 }
 
@@ -47,6 +47,8 @@ func (s *Scanner) Scan(ctx context.Context, rootPath string) (*models.ScanResult
 		ScanPath: rootPath,
 		ScanTime: time.Now(),
 	}
+
+	fmt.Println("Starting scan on path:", rootPath)
 
 	s.workQueue = make(chan string, s.config.Workers*2) // buffered channel
 
@@ -76,17 +78,25 @@ func (s *Scanner) Scan(ctx context.Context, rootPath string) (*models.ScanResult
 		close(s.errors)
 	}()
 
-	// aggregate results
+	done := make(chan struct{})
+
+	go func() {
+		for err := range s.errors {
+			// Log errors (could be aggregated or handled differently)
+			fmt.Printf("Scan error: %v\n", err)
+		}
+		done <- struct{}{}
+	}()
+
+	// aggregate results and errors concurrently
+
 	for r := range s.results {
 		finalResult.Folders = append(finalResult.Folders, r)
 		finalResult.TotalSize += r.Size
 		finalResult.TotalCount++
 	}
 
-	for err := range s.errors {
-		// Log errors (could be aggregated or handled differently)
-		fmt.Printf("Scan error: %v\n", err)
-	}
+	<-done // wait for error processing to complete
 
 	finalResult.Duration = time.Since(finalResult.ScanTime)
 	return finalResult, nil
