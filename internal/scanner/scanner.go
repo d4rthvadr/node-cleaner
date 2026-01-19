@@ -26,6 +26,7 @@ type CacheProvider interface {
 	Get(path string) (*models.CacheEntry, bool)
 	Set(path string, entry *models.CacheEntry) error
 	IsValid(path string, modTime time.Time) bool
+	Save() error
 }
 
 // NewScanner creates a new Scanner instance
@@ -47,6 +48,8 @@ func (s *Scanner) Scan(ctx context.Context, rootPath string) (*models.ScanResult
 		ScanTime: time.Now(),
 	}
 
+	s.workQueue = make(chan string, s.config.Workers*2) // buffered channel
+
 	var wg sync.WaitGroup
 
 	// start workers
@@ -61,14 +64,16 @@ func (s *Scanner) Scan(ctx context.Context, rootPath string) (*models.ScanResult
 	go func() {
 		if err := s.walkFileSystem(ctx, rootPath, 0); err != nil {
 			s.errors <- fmt.Errorf("walking filesystem: %w", err)
+			fmt.Printf("error occured %v", err)
 		}
+		fmt.Println("file system walk completed")
 		close(s.workQueue)
 	}()
 
 	go func() {
 		wg.Wait()
-		close(s.errors)
 		close(s.results)
+		close(s.errors)
 	}()
 
 	// aggregate results
@@ -203,6 +208,10 @@ func (s *Scanner) worker(ctx context.Context, wg *sync.WaitGroup) {
 					ModTime:  folder.ModTime,
 					LastScan: time.Now(),
 				})
+				err := s.cache.Save()
+				if err != nil {
+					fmt.Printf("failed to save cache: %v\n", err)
+				}
 			}
 
 			// context could cancelled while sending result

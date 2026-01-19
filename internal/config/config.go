@@ -107,7 +107,6 @@ func Load() *models.Config {
 		configDir := filepath.Join(home, ".nodecleaner")
 		globalConfig.CachePath = filepath.Join(configDir, "cache.json")
 		globalConfig.LogPath = filepath.Join(configDir, "nodecleaner.log")
-
 	}
 	return globalConfig
 

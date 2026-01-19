@@ -63,7 +63,10 @@ func runScan(cmd *cobra.Command, args []string) {
 			fmt.Printf("failed to initialize cache: %v", err)
 			os.Exit(1)
 		}
-		defer c.Save() // Save cache in case unsaved changes or exit occurs
+		err = c.Save() // Save cache in case unsaved changes or exit occurs
+		if err != nil {
+			fmt.Printf("failed to save cache: %v", err)
+		}
 		fmt.Println("Cache initialized at", cfg.CachePath)
 	}
 
