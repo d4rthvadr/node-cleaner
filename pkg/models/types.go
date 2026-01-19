@@ -18,13 +18,13 @@ type FailedOp struct {
 }
 
 type Config struct {
-	ScanPaths      []string `json:"scan_paths"`
-	IgnorePaths    []string `json:"ignore_paths"`
-	CachePath      string   `json:"-"`
-	LogPath        string   `json:"log_path"`
-	FollowSymlinks bool     `json:"follow_symlinks"`
-	MaxDepth       int      `json:"max_depth"`
-	Workers        int      `json:"workers"`
+	ScanPaths      []string `mapstructure:"scan_paths" json:"scan_paths"`
+	IgnorePaths    []string `mapstructure:"ignore_paths" json:"ignore_paths"`
+	CachePath      string   `mapstructure:"cache_path" json:"cache_path"`
+	LogPath        string   `mapstructure:"log_path" json:"log_path"`
+	FollowSymlinks bool     `mapstructure:"follow_symlinks" json:"follow_symlinks"`
+	MaxDepth       int      `mapstructure:"max_depth" json:"max_depth"`
+	Workers        int      `mapstructure:"workers" json:"workers"`
 }
 
 // CacheEntry represents a cached folder information
