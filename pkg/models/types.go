@@ -54,3 +54,12 @@ type ScanResult struct {
 	CacheHits   int                `json:"cache_hits"`
 	CacheMisses int                `json:"cache_misses"`
 }
+
+// CleanResult represents the result of a clean operation
+type CleanResult struct {
+	DeletedFolders []string      `json:"deleted_folders"`
+	Failed         []FailedOp    `json:"failed_ops"`
+	SpaceReclaimed int64         `json:"space_reclaimed"`
+	Duration       time.Duration `json:"duration"`
+	DryRun         bool          `json:"dry_run"`
+}
