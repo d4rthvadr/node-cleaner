@@ -69,3 +69,13 @@ func DisplayScanResults(result *models.ScanResult) {
 			float64(result.CacheHits)/float64(result.CacheHits+result.CacheMisses)*100)
 	}
 }
+
+func DisplayCleanResults(result *models.CleanResult) {
+
+	fmt.Println()
+
+	if result.DryRun {
+		fmt.Println(warningStyle.Render("Dry Run: No folders were actually deleted."))
+		fmt.Println()
+	}
+}
