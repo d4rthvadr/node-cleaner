@@ -69,3 +69,37 @@ func DisplayScanResults(result *models.ScanResult) {
 			float64(result.CacheHits)/float64(result.CacheHits+result.CacheMisses)*100)
 	}
 }
+
+func DisplayCleanResults(result *models.CleanResult) {
+
+	fmt.Println()
+
+	if result.DryRun {
+		fmt.Println(warningStyle.Render("Dry Run: No folders were actually deleted."))
+		fmt.Println()
+	}
+	fmt.Println(headerStyle.Render("Clean Results:"))
+	fmt.Println(strings.Repeat("-", 80))
+
+	if len(result.DeletedFolders) > 0 {
+		fmt.Println(successStyle.Render("Deleted Folders:"))
+		for _, path := range result.DeletedFolders {
+			fmt.Println(" - " + path)
+		}
+	}
+
+	if len(result.Failed) > 0 {
+		fmt.Printf("\n%s\n", headerStyle.Render("⚠️ Failed Deletions:"))
+		for _, fail := range result.Failed {
+			fmt.Printf(" - %s: %s\n", fail.Path, fail.Reason)
+		}
+	}
+	fmt.Println(strings.Repeat("─", 80))
+	fmt.Printf("\nTotal space reclaimed: %s\n", successStyle.Render(humanize.Bytes(uint64(result.SpaceReclaimed))))
+	fmt.Printf(" Duration: %s\n", result.Duration)
+
+	if !result.DryRun {
+		fmt.Printf("\n%s\n", successStyle.Render("✓ Cleanup complete!"))
+	}
+
+}

@@ -16,13 +16,12 @@ help:
 	@echo "  fmt         Format Go code"
 	@echo "  test        Run unit tests"
 
-build:
-	@echo "Cleaning previous builds..."
-	@rm -rf $(DIST)
+build: tidy clean 
 	@echo "Building $(APP) (VERSION=$(VERSION))..."
 	@VERSION=$(VERSION) $(SCRIPT)
 
 clean:
+	@echo "Cleaning previous builds..."
 	@rm -rf $(DIST)
 
 tidy:
