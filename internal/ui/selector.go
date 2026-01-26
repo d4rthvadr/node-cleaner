@@ -84,20 +84,41 @@ func (m *SelectionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // View renders the table with a simple hint footer.
 func (m SelectionModel) View() string {
-	return m.table.View() + "\n(q to quit)\n"
+	selectedCount := len(m.selected)
+	for _, isSelected := range m.selected {
+		if !isSelected {
+			selectedCount--
+		}
+	}
+	
+	footer := "\n"
+	footer += "Selected: " + humanize.Bytes(uint64(m.totalSelected))
+	footer += " (" + humanize.Comma(int64(selectedCount)) + " folders)\n"
+	footer += "\nControls: [Space] Toggle  [Enter] Confirm  [q/Esc] Cancel\n"
+	
+	return m.table.View() + footer
 }
 
 func (m *SelectionModel) updateRow(idx int) {
-	checkmark := ""
-	if m.selected[idx] {
-		checkmark = "[x]"
+	// Get all current rows
+	rows := make([]table.Row, len(m.folders))
+	
+	// Rebuild all rows with updated selection states
+	for i, folder := range m.folders {
+		checkmark := "[ ]"
+		if m.selected[i] {
+			checkmark = "[x]"
+		}
+		rows[i] = table.Row{
+			checkmark,
+			humanize.Bytes(uint64(folder.Size)),
+			humanize.Time(folder.AccessTime),
+			folder.Path,
+		}
 	}
-
-	f := m.folders[idx]
-	m.table.SetRows([]table.Row{
-		{checkmark, humanize.Bytes(uint64(f.Size)), humanize.Time(f.AccessTime), f.Path},
-	})
-
+	
+	// Update the table with all rows
+	m.table.SetRows(rows)
 }
 
 func (m *SelectionModel) GetSelectedFolders() []models.DependencyFolder {
