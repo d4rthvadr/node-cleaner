@@ -48,10 +48,9 @@ func runScan(cmd *cobra.Command, args []string) {
 	}
 
 	cfg := config.Load()
-	cfg.ScanPaths = append(cfg.ScanPaths, path)
-
+	cfg.ScanPath = path
 	fmt.Printf("config loaded %v", cfg)
-	fmt.Printf("properties loaded workers: %v, scanPaths: %v, cachePath: %v, logPath: %v\n", cfg.Workers, cfg.ScanPaths, cfg.CachePath, cfg.LogPath)
+	fmt.Printf("properties loaded workers: %v, scanPaths: %v, cachePath: %v, logPath: %v\n", cfg.Workers, cfg.ScanPath, cfg.CachePath, cfg.LogPath)
 
 	// Initialize cache
 	var c *cache.Cache

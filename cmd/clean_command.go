@@ -39,15 +39,16 @@ func runClean(cmd *cobra.Command, args []string) error {
 	path := cleanPath
 
 	cfg := config.Load()
+	fmt.Printf("Scanning path: %s %v\n", path, cfg.ScanPath)
 
 	if len(args) > 0 {
 		path = args[0]
 	}
 
 	if path == "" {
-		path = cfg.ScanPaths[0] // Use config default
+		path = cfg.ScanPath // Use config default
 	}
-	cfg.ScanPaths = []string{path}
+	cfg.ScanPath = path
 
 	var c *cache.Cache
 	var err error

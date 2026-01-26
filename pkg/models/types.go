@@ -18,7 +18,9 @@ type FailedOp struct {
 }
 
 type Config struct {
-	ScanPaths      []string `mapstructure:"scan_paths" json:"scan_paths"`
+	//ScanPaths []string `mapstructure:"scan_paths" json:"scan_paths"`
+	ScanPath string `mapstructure:"scan_path" json:"scan_path"`
+
 	IgnorePaths    []string `mapstructure:"ignore_paths" json:"ignore_paths"`
 	CachePath      string   `mapstructure:"cache_path" json:"cache_path"`
 	LogPath        string   `mapstructure:"log_path" json:"log_path"`
